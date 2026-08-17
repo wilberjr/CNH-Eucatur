@@ -11,7 +11,8 @@ const env = {
   panelMessageId: process.env.PANEL_MESSAGE_ID || '',
   timezone: process.env.TIMEZONE || 'America/Sao_Paulo',
   memberRoleId: process.env.MEMBER_ROLE_ID || '',
-  removeRoleOnInactive: String(process.env.REMOVE_ROLE_ON_INACTIVE || 'false').toLowerCase() === 'true'
+  removeRoleOnInactive: String(process.env.REMOVE_ROLE_ON_INACTIVE || 'false').toLowerCase() === 'true',
+  dataDir: process.env.DATA_DIR || '/app/data'
 };
 
 const required = ['DISCORD_TOKEN', 'CLIENT_ID', 'GUILD_ID', 'PANEL_CHANNEL_ID', 'ADMIN_CHANNEL_ID', 'LOG_CHANNEL_ID'];

@@ -1,9 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
+const { env } = require('../config/env');
 
-const ROOT = path.join(__dirname, '..', '..');
-const DATA_DIR = path.join(ROOT, 'data');
+const DATA_DIR = env.dataDir;
 const DB_PATH = path.join(DATA_DIR, 'cnh.sqlite');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -13,7 +13,8 @@ db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS registrations (
     discord_user_id TEXT PRIMARY KEY,
     discord_tag TEXT,
-    nome TEXT NOT NULL,
+    nome_completo TEXT NOT NULL,
+    identificacao_empresa TEXT NOT NULL,
     telefone TEXT NOT NULL,
     steam_id TEXT NOT NULL,
     created_at TEXT NOT NULL,

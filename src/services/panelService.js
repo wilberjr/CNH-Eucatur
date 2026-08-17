@@ -1,10 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { env } = require('../config/env');
 
-const ROOT = path.join(__dirname, '..', '..');
-const DATA_DIR = path.join(ROOT, 'data');
-const PANEL_STORE = path.join(DATA_DIR, 'panel-message.json');
+const PANEL_STORE = path.join(env.dataDir, 'panel-message.json');
+if (!fs.existsSync(env.dataDir)) fs.mkdirSync(env.dataDir, { recursive: true });
 
 function panelPayload() {
   const embed = new EmbedBuilder()
@@ -12,9 +12,10 @@ function panelPayload() {
     .setTitle('CNH Virtual • Consórcio Eucatur')
     .setDescription('Cadastro e renovação mensal da sua CNH Virtual. Mantenha seus dados atualizados para continuar regular na empresa.')
     .addFields(
-      { name: 'Cadastro', value: 'Nome, telefone e Steam ID.', inline: true },
-      { name: 'Renovação', value: 'Obrigatória a cada 30 dias.', inline: true },
-      { name: 'Alerta', value: 'Staff é avisada após 40 dias.', inline: true }
+      { name: 'Nome Completo', value: 'Ex.: Fulano de Tal da Silva', inline: false },
+      { name: 'Identificação padrão da empresa', value: 'Ex.: [EMPRESA] Fulano - 12345', inline: false },
+      { name: 'Telefone', value: 'Aceita formato internacional. Ex.: +55 12 91234 5678', inline: false },
+      { name: 'Steam ID', value: 'Use o formato numérico longo. Ex.: 7656119...', inline: false }
     )
     .setFooter({ text: 'Consórcio Eucatur • Painel permanente' });
 
@@ -41,11 +42,11 @@ function saveStoredPanelMessageId(messageId) {
   fs.writeFileSync(PANEL_STORE, JSON.stringify({ messageId }, null, 2));
 }
 
-async function ensurePanelMessage(client, env) {
-  const channel = await client.channels.fetch(env.panelChannelId).catch(() => null);
+async function ensurePanelMessage(client, runtimeEnv) {
+  const channel = await client.channels.fetch(runtimeEnv.panelChannelId).catch(() => null);
   if (!channel) return '';
 
-  let messageId = env.panelMessageId || loadStoredPanelMessageId();
+  let messageId = runtimeEnv.panelMessageId || loadStoredPanelMessageId();
   let message = null;
 
   if (messageId) message = await channel.messages.fetch(messageId).catch(() => null);

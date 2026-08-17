@@ -3,11 +3,12 @@ const { isoNow } = require('../utils/date');
 
 async function upsertRegistration(payload) {
   await run(`INSERT INTO registrations (
-    discord_user_id, discord_tag, nome, telefone, steam_id, created_at, updated_at, last_user_alert_at, last_admin_alert_at, status
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, 'ativa')
+    discord_user_id, discord_tag, nome_completo, identificacao_empresa, telefone, steam_id, created_at, updated_at, last_user_alert_at, last_admin_alert_at, status
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 'ativa')
   ON CONFLICT(discord_user_id) DO UPDATE SET
     discord_tag=excluded.discord_tag,
-    nome=excluded.nome,
+    nome_completo=excluded.nome_completo,
+    identificacao_empresa=excluded.identificacao_empresa,
     telefone=excluded.telefone,
     steam_id=excluded.steam_id,
     updated_at=excluded.updated_at,
@@ -16,7 +17,8 @@ async function upsertRegistration(payload) {
     status='ativa'`, [
     payload.discord_user_id,
     payload.discord_tag,
-    payload.nome,
+    payload.nome_completo,
+    payload.identificacao_empresa,
     payload.telefone,
     payload.steam_id,
     payload.created_at,

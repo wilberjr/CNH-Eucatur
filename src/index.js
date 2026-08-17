@@ -14,6 +14,7 @@ const {
 const { env, validateEnv } = require('./config/env');
 const { isoNow, daysSince, classify } = require('./utils/date');
 const { canUseStaff } = require('./utils/permissions');
+const { normalizePhone, isValidPhone, normalizeSteamId, isValidSteamId } = require('./utils/validation');
 const { registerCommands } = require('./commands/registerCommands');
 const { ensureBaseCard, generateCard } = require('./services/cardService');
 const { ensurePanelMessage } = require('./services/panelService');
@@ -32,9 +33,38 @@ function buildModal(customId, title) {
     .setCustomId(customId)
     .setTitle(title)
     .addComponents(
-      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('nome').setLabel('Nome completo').setStyle(TextInputStyle.Short).setRequired(true)),
-      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('telefone').setLabel('Telefone').setStyle(TextInputStyle.Short).setRequired(true)),
-      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('steam_id').setLabel('Steam ID / perfil Steam').setStyle(TextInputStyle.Short).setRequired(true))
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('nome_completo')
+          .setLabel('Nome Completo')
+          .setPlaceholder('Fulano de Tal da Silva')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('identificacao_empresa')
+          .setLabel('Identificação padrão da empresa')
+          .setPlaceholder('[EMPRESA] Fulano - 12345')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('telefone')
+          .setLabel('Telefone')
+          .setPlaceholder('+55 12 91234 5678')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+      ),
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('steam_id')
+          .setLabel('Steam ID')
+          .setPlaceholder('7656119...')
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+      )
     );
 }
 
@@ -89,13 +119,13 @@ client.on(Events.InteractionCreate, async interaction => {
     if (interaction.commandName === 'cnh-vencidos') {
       const rows = await getAllRegistrations();
       const filtered = rows.filter(row => ['vencida', 'inativa'].includes(classify(daysSince(row.updated_at))));
-      const text = filtered.slice(0, 30).map(row => `• ${row.nome} — ${daysSince(row.updated_at)} dias`).join('\n');
+      const text = filtered.slice(0, 30).map(row => `• ${row.nome_completo} — ${daysSince(row.updated_at)} dias`).join('\n');
       return interaction.reply({ content: text || 'Nenhum cadastro vencido ou inativo encontrado.', ephemeral: true });
     }
 
     if (interaction.commandName === 'cnh-proximos') {
       const rows = await getAllRegistrations();
-      const text = rows.filter(row => classify(daysSince(row.updated_at)) === 'proximo').slice(0, 30).map(row => `• ${row.nome} — ${daysSince(row.updated_at)} dias`).join('\n');
+      const text = rows.filter(row => classify(daysSince(row.updated_at)) === 'proximo').slice(0, 30).map(row => `• ${row.nome_completo} — ${daysSince(row.updated_at)} dias`).join('\n');
       return interaction.reply({ content: text || 'Nenhum cadastro próximo do vencimento.', ephemeral: true });
     }
   }
@@ -113,13 +143,34 @@ client.on(Events.InteractionCreate, async interaction => {
 
   if (interaction.isModalSubmit()) {
     if (!['cnh_modal_register', 'cnh_modal_renew'].includes(interaction.customId)) return;
+
+    const nomeCompleto = interaction.fields.getTextInputValue('nome_completo');
+    const identificacaoEmpresa = interaction.fields.getTextInputValue('identificacao_empresa');
+    const telefone = normalizePhone(interaction.fields.getTextInputValue('telefone'));
+    const steamId = normalizeSteamId(interaction.fields.getTextInputValue('steam_id'));
+
+    if (!isValidPhone(telefone)) {
+      return interaction.reply({
+        content: 'Telefone inválido. Use formato internacional, por exemplo: +55 12 91234 5678',
+        ephemeral: true
+      });
+    }
+
+    if (!isValidSteamId(steamId)) {
+      return interaction.reply({
+        content: 'Steam ID inválido. Use o formato numérico longo, por exemplo: 7656119...',
+        ephemeral: true
+      });
+    }
+
     const now = isoNow();
     await upsertRegistration({
       discord_user_id: interaction.user.id,
       discord_tag: interaction.user.tag,
-      nome: interaction.fields.getTextInputValue('nome'),
-      telefone: interaction.fields.getTextInputValue('telefone'),
-      steam_id: interaction.fields.getTextInputValue('steam_id'),
+      nome_completo: nomeCompleto,
+      identificacao_empresa: identificacaoEmpresa,
+      telefone,
+      steam_id: steamId,
       created_at: now,
       updated_at: now
     });
