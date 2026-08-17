@@ -1,0 +1,21 @@
+{
+  "name": "cnh-consorcio-eucatur-bot",
+  "version": "4.0.0",
+  "description": "Bot Discord pronto para produção com CNH virtual, painel fixo e controle de atividade mensal",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node src/index.js"
+  },
+  "dependencies": {
+    "canvas": "^2.11.2",
+    "discord.js": "^14.21.0",
+    "dotenv": "^16.6.1",
+    "node-cron": "^4.2.1",
+    "sqlite3": "^5.1.7"
+  },
+  "engines": {
+    "node": ">=20 <24"
+  }
+}
