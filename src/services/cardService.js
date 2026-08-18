@@ -47,7 +47,6 @@ async function ensureBaseCard() {
   ctx.fillText('Steam ID', 380, 504);
   ctx.fillText('Validade', 380, 588);
   ctx.fillStyle = '#fde68a'; ctx.font = font('bold', 24); ctx.fillText('Status', 980, 588);
-  ctx.fillStyle = '#bbf7d0'; ctx.fillText('ATIVA', 980, 622);
   fs.writeFileSync(CARD_PATH, canvas.toBuffer('image/png'));
 }
 async function generateCard(user, row) {
@@ -66,7 +65,7 @@ async function generateCard(user, row) {
   ctx.font = font('regular', 28); ctx.fillText(trim(row.identificacao_empresa, 42), 380, 374);
   ctx.fillText(trim(row.telefone, 42), 380, 458); ctx.fillText(trim(row.steam_id, 42), 380, 542); ctx.fillText(brDate(validity), 380, 626);
   ctx.fillStyle = '#c7d2fe'; ctx.font = font('bold', 22); ctx.fillText(`Discord: ${trim(user.username, 20)}`, 74, 596); ctx.fillText(`Última atualização: ${brDate(row.updated_at)}`, 380, 668);
-  ctx.fillStyle = color; ctx.font = font('bold', 28); ctx.fillText(status, 980, 622);
+  ctx.textAlign = 'left'; ctx.fillText(status, 950, 622);
   const out = path.join(DATA_DIR, `cnh-${user.id}.png`);
   fs.writeFileSync(out, canvas.toBuffer('image/png'));
   return { path: out, status, days };
