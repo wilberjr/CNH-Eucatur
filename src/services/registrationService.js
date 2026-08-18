@@ -1,6 +1,5 @@
 const { run, get, all } = require('./database');
 const { isoNow } = require('../utils/date');
-
 async function upsertRegistration(payload) {
   await run(`INSERT INTO registrations (
     discord_user_id, discord_tag, nome_completo, identificacao_empresa, telefone, steam_id, created_at, updated_at, last_user_alert_at, last_admin_alert_at, status
@@ -25,21 +24,9 @@ async function upsertRegistration(payload) {
     payload.updated_at
   ]);
 }
-
-async function getRegistration(userId) {
-  return get('SELECT * FROM registrations WHERE discord_user_id = ?', [userId]);
-}
-
-async function getAllRegistrations() {
-  return all('SELECT * FROM registrations ORDER BY updated_at ASC');
-}
-
-async function markAlert(userId, field) {
-  return run(`UPDATE registrations SET ${field} = ? WHERE discord_user_id = ?`, [isoNow(), userId]);
-}
-
-async function updateStatus(userId, status) {
-  return run('UPDATE registrations SET status = ? WHERE discord_user_id = ?', [status, userId]);
-}
-
-module.exports = { upsertRegistration, getRegistration, getAllRegistrations, markAlert, updateStatus };
+async function getRegistration(userId) { return get('SELECT * FROM registrations WHERE discord_user_id = ?', [userId]); }
+async function getAllRegistrations() { return all('SELECT * FROM registrations ORDER BY updated_at ASC'); }
+async function deleteRegistration(userId) { return run('DELETE FROM registrations WHERE discord_user_id = ?', [userId]); }
+async function markAlert(userId, field) { return run(`UPDATE registrations SET ${field} = ? WHERE discord_user_id = ?`, [isoNow(), userId]); }
+async function updateStatus(userId, status) { return run('UPDATE registrations SET status = ? WHERE discord_user_id = ?', [status, userId]); }
+module.exports = { upsertRegistration, getRegistration, getAllRegistrations, deleteRegistration, markAlert, updateStatus };

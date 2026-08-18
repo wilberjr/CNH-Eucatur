@@ -19,9 +19,7 @@ const required = ['DISCORD_TOKEN', 'CLIENT_ID', 'GUILD_ID', 'PANEL_CHANNEL_ID', 
 const missing = required.filter(key => !process.env[key]);
 
 function validateEnv() {
-  if (missing.length) {
-    throw new Error(`Variáveis obrigatórias ausentes: ${missing.join(', ')}`);
-  }
+  if (missing.length) throw new Error(`Variáveis obrigatórias ausentes: ${missing.join(', ')}`);
 }
 
 module.exports = { env, validateEnv };
