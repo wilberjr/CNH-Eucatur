@@ -13,16 +13,7 @@ async function upsertRegistration(payload) {
     updated_at=excluded.updated_at,
     last_user_alert_at=NULL,
     last_admin_alert_at=NULL,
-    status='ativa'`, [
-    payload.discord_user_id,
-    payload.discord_tag,
-    payload.nome_completo,
-    payload.identificacao_empresa,
-    payload.telefone,
-    payload.steam_id,
-    payload.created_at,
-    payload.updated_at
-  ]);
+    status='ativa'`, [payload.discord_user_id,payload.discord_tag,payload.nome_completo,payload.identificacao_empresa,payload.telefone,payload.steam_id,payload.created_at,payload.updated_at]);
 }
 async function getRegistration(userId) { return get('SELECT * FROM registrations WHERE discord_user_id = ?', [userId]); }
 async function getAllRegistrations() { return all('SELECT * FROM registrations ORDER BY updated_at ASC'); }

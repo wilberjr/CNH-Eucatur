@@ -14,8 +14,7 @@ function panelPayload() {
       { name: 'Identificação padrão da empresa', value: 'Ex.: [EMPRESA] Fulano - 12345', inline: false },
       { name: 'Telefone', value: 'Aceita formato internacional. Ex.: +55 12 91234 5678', inline: false },
       { name: 'Steam ID', value: 'Use o formato numérico longo. Ex.: 7656119...', inline: false }
-    )
-    .setFooter({ text: 'Consórcio Eucatur • Painel permanente' });
+    );
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('cnh_register').setLabel('Cadastrar').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId('cnh_renew').setLabel('Renovar').setStyle(ButtonStyle.Primary),
@@ -23,10 +22,7 @@ function panelPayload() {
   );
   return { embeds: [embed], components: [row] };
 }
-function loadStoredPanelMessageId() {
-  if (!fs.existsSync(PANEL_STORE)) return '';
-  try { return JSON.parse(fs.readFileSync(PANEL_STORE, 'utf8')).messageId || ''; } catch { return ''; }
-}
+function loadStoredPanelMessageId() { if (!fs.existsSync(PANEL_STORE)) return ''; try { return JSON.parse(fs.readFileSync(PANEL_STORE, 'utf8')).messageId || ''; } catch { return ''; } }
 function saveStoredPanelMessageId(messageId) { fs.writeFileSync(PANEL_STORE, JSON.stringify({ messageId }, null, 2)); }
 async function ensurePanelMessage(client, runtimeEnv) {
   const channel = await client.channels.fetch(runtimeEnv.panelChannelId).catch(() => null);

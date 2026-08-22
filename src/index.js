@@ -5,7 +5,7 @@ const { daysSince, classify, isoNow } = require('./utils/date');
 const { canUseStaff } = require('./utils/permissions');
 const { normalizePhone, isValidPhone, normalizeSteamId, isValidSteamId } = require('./utils/validation');
 const { registerCommands } = require('./commands/registerCommands');
-const { ensureBaseCard, generateCard } = require('./services/cardService');
+const { generateCard } = require('./services/cardService');
 const { ensurePanelMessage } = require('./services/panelService');
 const { runDailyAudit } = require('./services/auditService');
 const { upsertRegistration, getRegistration, getAllRegistrations, deleteRegistration } = require('./services/registrationService');
@@ -19,13 +19,8 @@ function buildModal(customId, title) {
     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('steam_id').setLabel('Steam ID').setPlaceholder('7656119...').setStyle(TextInputStyle.Short).setRequired(true))
   );
 }
-function summarize(rows) {
-  const count = { ativa: 0, proximo: 0, vencida: 0, inativa: 0 };
-  for (const row of rows) count[classify(daysSince(row.updated_at))]++;
-  return count;
-}
+function summarize(rows) { const count = { ativa: 0, proximo: 0, vencida: 0, inativa: 0 }; for (const row of rows) count[classify(daysSince(row.updated_at))]++; return count; }
 client.once(Events.ClientReady, async ready => {
-  await ensureBaseCard();
   await registerCommands(env);
   await ensurePanelMessage(client, env);
   cron.schedule('0 9 * * *', () => runDailyAudit(client, env).catch(console.error), { timezone: env.timezone });
@@ -44,18 +39,11 @@ client.on(Events.InteractionCreate, async interaction => {
       const card = await generateCard(interaction.user, row);
       return interaction.reply({ content: `Status atual: ${card.status}.`, files: [new AttachmentBuilder(card.path)], ephemeral: true });
     }
-    if (['cnh-admin', 'cnh-vencidos', 'cnh-proximos', 'cnh-excluir'].includes(interaction.commandName) && !canUseStaff(interaction, env)) {
-      return interaction.reply({ content: 'Apenas a staff pode usar esse comando.', ephemeral: true });
-    }
+    if (['cnh-admin', 'cnh-vencidos', 'cnh-proximos', 'cnh-excluir'].includes(interaction.commandName) && !canUseStaff(interaction, env)) return interaction.reply({ content: 'Apenas a staff pode usar esse comando.', ephemeral: true });
     if (interaction.commandName === 'cnh-admin') {
       const rows = await getAllRegistrations();
       const count = summarize(rows);
-      const embed = new EmbedBuilder().setColor(0x1d4ed8).setTitle('Painel administrativo • CNH Virtual').addFields(
-        { name: 'Ativas', value: String(count.ativa), inline: true },
-        { name: 'Próximas', value: String(count.proximo), inline: true },
-        { name: 'Vencidas', value: String(count.vencida), inline: true },
-        { name: 'Inativas', value: String(count.inativa), inline: true }
-      );
+      const embed = new EmbedBuilder().setColor(0x1d4ed8).setTitle('Painel administrativo • CNH Virtual').addFields({ name: 'Ativas', value: String(count.ativa), inline: true },{ name: 'Próximas', value: String(count.proximo), inline: true },{ name: 'Vencidas', value: String(count.vencida), inline: true },{ name: 'Inativas', value: String(count.inativa), inline: true });
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
     if (interaction.commandName === 'cnh-vencidos') {

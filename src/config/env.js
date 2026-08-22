@@ -1,5 +1,4 @@
 require('dotenv').config();
-
 const env = {
   token: process.env.DISCORD_TOKEN,
   clientId: process.env.CLIENT_ID,
@@ -14,12 +13,7 @@ const env = {
   removeRoleOnInactive: String(process.env.REMOVE_ROLE_ON_INACTIVE || 'false').toLowerCase() === 'true',
   dataDir: process.env.DATA_DIR || '/app/data'
 };
-
 const required = ['DISCORD_TOKEN', 'CLIENT_ID', 'GUILD_ID', 'PANEL_CHANNEL_ID', 'ADMIN_CHANNEL_ID', 'LOG_CHANNEL_ID'];
 const missing = required.filter(key => !process.env[key]);
-
-function validateEnv() {
-  if (missing.length) throw new Error(`Variáveis obrigatórias ausentes: ${missing.join(', ')}`);
-}
-
+function validateEnv() { if (missing.length) throw new Error(`Variáveis obrigatórias ausentes: ${missing.join(', ')}`); }
 module.exports = { env, validateEnv };
