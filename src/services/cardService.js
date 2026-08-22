@@ -132,14 +132,14 @@ async function drawAvatar(ctx, user) {
     );
 
     /*
-     * Área do quadro da foto na imagem final:
-     * x: 158 até 357
-     * y: 264 até 465
+     * Área do quadro da foto na imagem final (template 2400x1500):
+     * x: 340 até 655
+     * y: 530 até 875
      */
-    const x = 158;
-    const y = 264;
-    const width = 199;
-    const height = 201;
+    const x = 340;
+    const y = 530;
+    const width = 315;
+    const height = 345;
 
     ctx.save();
 
@@ -212,66 +212,99 @@ async function generateCard(user, row) {
   );
 
   /*
-   * Coordenadas conferidas na imagem final 1258x689.
-   * Os rótulos já existem no template.
-   * Aqui são desenhados somente os valores.
+   * Coordenadas conferidas pixel a pixel na imagem real do template
+   * (cnh-template.jpg, 2400x1500). Os rótulos já existem no template;
+   * o texto do rótulo mais longo ("Data de Renovação:") termina em
+   * x≈1245, então os valores começam em x=1280 para não sobrepor.
+   * Os y foram medidos no centro vertical de cada linha de rótulo.
    */
-  const valueX = 600;
-  const valueWidth = 450;
+  const valueX = 1280;
+  const valueWidth = 360;
 
   drawValue(ctx, row.nome_completo, {
     x: valueX,
-    y: 398,
+    y: 549,
     maxWidth: valueWidth,
-    size: 24
+    size: 34
   });
 
   drawValue(ctx, row.telefone, {
     x: valueX,
-    y: 450,
+    y: 625,
     maxWidth: valueWidth,
-    size: 24
+    size: 34
   });
 
   drawValue(ctx, row.steam_id, {
     x: valueX,
-    y: 504,
+    y: 701,
     maxWidth: valueWidth,
-    size: 21
+    size: 30
   });
 
   drawValue(ctx, renewalDate, {
     x: valueX,
-    y: 558,
+    y: 780,
     maxWidth: valueWidth,
-    size: 24
+    size: 34
   });
 
   drawValue(ctx, validityDate, {
     x: valueX,
-    y: 612,
+    y: 852,
     maxWidth: valueWidth,
-    size: 24
+    size: 34
   });
 
   /*
-   * Identificação da empresa abaixo do quadro da foto.
+   * Identificação da empresa abaixo do quadro da foto
+   * (quadro termina em y≈875, área livre até o topo dos caminhões).
    */
   const companyId =
     row.identificacao_empresa ||
     `[C.EUCATUR] ${user.username}`;
 
   drawValue(ctx, companyId, {
-    x: 158,
-    y: 509,
-    maxWidth: 270,
-    size: 15,
+    x: 340,
+    y: 905,
+    maxWidth: 315,
+    size: 22,
     color: '#f8edc9'
   });
 
   /*
-   * Selo de status à direita.
+   * Selo de status: sobrepõe o "ATIVO" estático do template,
+   * centrado no mesmo local (x≈1753, y≈621, acima do círculo dourado).
+   * Como esse texto já vem "gravado" no fundo da imagem, primeiro
+   * pintamos um retângulo na cor de fundo por baixo, para que status
+   * diferentes de ATIVO (ex: VENCIDA) não fiquem sobrepostos ao
+   * texto original do template.
    */
+  const statusLabel =
+    status === 'ATIVA' ? 'ATIVO' : status;
+
+  ctx.save();
+  ctx.font = getFont('bold', 32);
+  const statusTextWidth = ctx.measureText(
+    statusLabel
+  ).width;
+  const patchWidth = Math.max(
+    statusTextWidth + 40,
+    140
+  );
+
+  ctx.fillStyle = '#141f29';
+  ctx.beginPath();
+  ctx.roundRect(
+    1753 - patchWidth / 2,
+    596,
+    patchWidth,
+    52,
+    10
+  );
+  ctx.fill();
+  ctx.restore();
+
   let statusColor = '#fff6cf';
 
   if (status === 'VENCIDA') {
@@ -288,12 +321,12 @@ async function generateCard(user, row) {
 
   drawValue(
     ctx,
-    status === 'ATIVA' ? 'ATIVO' : status,
+    statusLabel,
     {
-      x: 1025,
-      y: 348,
-      maxWidth: 130,
-      size: 22,
+      x: 1753,
+      y: 621,
+      maxWidth: 220,
+      size: 32,
       weight: 'bold',
       color: statusColor,
       align: 'center'
