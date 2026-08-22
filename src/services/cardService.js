@@ -54,19 +54,19 @@ function getFont(weight, size) {
 
 function fitText(
   ctx,
-  text,
+  value,
   maxWidth,
   initialSize,
   weight = 'regular',
-  minimumSize = 18
+  minimumSize = 14
 ) {
   let size = initialSize;
 
-  while (size >= minimumSize) {
+  while (size > minimumSize) {
     ctx.font = getFont(weight, size);
 
     if (
-      ctx.measureText(String(text)).width <= maxWidth
+      ctx.measureText(String(value)).width <= maxWidth
     ) {
       return size;
     }
@@ -77,87 +77,69 @@ function fitText(
   return minimumSize;
 }
 
-function drawText(ctx, text, options = {}) {
+function drawValue(ctx, value, options) {
   const {
     x,
     y,
-    maxWidth = 500,
-    size = 28,
-    weight = 'regular',
+    maxWidth,
+    size = 20,
     color = '#ffffff',
-    align = 'left',
-    baseline = 'middle',
-    minimumSize = 18
+    weight = 'regular',
+    align = 'left'
   } = options;
 
   const finalSize = fitText(
     ctx,
-    text,
+    value,
     maxWidth,
     size,
-    weight,
-    minimumSize
+    weight
   );
 
   ctx.font = getFont(weight, finalSize);
   ctx.fillStyle = color;
   ctx.textAlign = align;
-  ctx.textBaseline = baseline;
+  ctx.textBaseline = 'middle';
 
-  ctx.fillText(String(text), x, y);
+  ctx.fillText(
+    String(value),
+    x,
+    y
+  );
 }
 
-function ensureDirectory(directory) {
-  if (!fs.existsSync(directory)) {
-    fs.mkdirSync(directory, {
+function ensureFiles() {
+  if (!fs.existsSync(TEMPLATE_PATH)) {
+    throw new Error(
+      `Arquivo não encontrado: ${TEMPLATE_PATH}`
+    );
+  }
+
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, {
       recursive: true
     });
   }
 }
 
-function ensureAssets() {
-  if (!fs.existsSync(TEMPLATE_PATH)) {
-    throw new Error(
-      [
-        'Template não encontrado:',
-        TEMPLATE_PATH,
-        'Coloque cnh-template.jpg dentro de assets/.'
-      ].join(' ')
-    );
-  }
-
-  if (!fs.existsSync(FONT_REGULAR)) {
-    console.warn(
-      `Fonte regular não encontrada: ${FONT_REGULAR}`
-    );
-  }
-
-  if (!fs.existsSync(FONT_BOLD)) {
-    console.warn(
-      `Fonte bold não encontrada: ${FONT_BOLD}`
-    );
-  }
-}
-
 async function drawAvatar(ctx, user) {
   try {
-    const avatarUrl = user.displayAvatarURL({
-      extension: 'png',
-      size: 512
-    });
-
-    const avatar = await loadImage(avatarUrl);
+    const avatar = await loadImage(
+      user.displayAvatarURL({
+        extension: 'png',
+        size: 512
+      })
+    );
 
     /*
-     * Área correta da foto na imagem de 1728x1080.
-     * O quadro original começa aproximadamente em:
-     * x = 218, y = 367
-     * largura = 283, altura = 282
+     * Área do quadro da foto na imagem final:
+     * x: 158 até 357
+     * y: 264 até 465
      */
-    const x = 220;
-    const y = 368;
-    const width = 276;
-    const height = 278;
+    const x = 158;
+    const y = 264;
+    const width = 199;
+    const height = 201;
 
     ctx.save();
 
@@ -167,7 +149,7 @@ async function drawAvatar(ctx, user) {
       y,
       width,
       height,
-      18
+      14
     );
 
     ctx.clip();
@@ -191,13 +173,16 @@ async function drawAvatar(ctx, user) {
 
 async function generateCard(user, row) {
   registerLocalFonts();
-  ensureAssets();
-  ensureDirectory(DATA_DIR);
+  ensureFiles();
 
   const template = await loadImage(
     TEMPLATE_PATH
   );
 
+  /*
+   * O Canvas usa a resolução real da imagem.
+   * Não use 1280x720 fixo aqui.
+   */
   const canvas = createCanvas(
     template.width,
     template.height
@@ -215,89 +200,79 @@ async function generateCard(user, row) {
 
   await drawAvatar(ctx, user);
 
-  const renewalDate = brDate(row.updated_at);
+  const days = daysSince(row.updated_at);
+  const status = classify(days).toUpperCase();
+
+  const renewalDate = brDate(
+    row.updated_at
+  );
 
   const validityDate = brDate(
     addDays(row.updated_at, 30)
   );
 
-  const days = daysSince(row.updated_at);
-  const status = classify(days).toUpperCase();
-
   /*
-   * Valores alinhados aos respectivos rótulos
-   * do template original.
-   *
-   * Os rótulos permanecem na imagem.
-   * O código desenha apenas os valores.
+   * Coordenadas conferidas na imagem final 1258x689.
+   * Os rótulos já existem no template.
+   * Aqui são desenhados somente os valores.
    */
   const valueX = 600;
-  const valueWidth = 500;
+  const valueWidth = 450;
 
-  drawText(ctx, row.nome_completo, {
+  drawValue(ctx, row.nome_completo, {
     x: valueX,
     y: 398,
     maxWidth: valueWidth,
-    size: 27,
-    color: '#ffffff'
+    size: 24
   });
 
-  drawText(ctx, row.telefone, {
+  drawValue(ctx, row.telefone, {
     x: valueX,
-    y: 462,
+    y: 450,
     maxWidth: valueWidth,
-    size: 27,
-    color: '#ffffff'
+    size: 24
   });
 
-  drawText(ctx, row.steam_id, {
+  drawValue(ctx, row.steam_id, {
     x: valueX,
-    y: 526,
+    y: 504,
     maxWidth: valueWidth,
-    size: 27,
-    color: '#ffffff'
+    size: 21
   });
 
-  drawText(ctx, renewalDate, {
+  drawValue(ctx, renewalDate, {
     x: valueX,
-    y: 590,
+    y: 558,
     maxWidth: valueWidth,
-    size: 27,
-    color: '#ffffff'
+    size: 24
   });
 
-  drawText(ctx, validityDate, {
+  drawValue(ctx, validityDate, {
     x: valueX,
-    y: 654,
+    y: 612,
     maxWidth: valueWidth,
-    size: 27,
-    color: '#ffffff'
+    size: 24
   });
 
   /*
-   * Identificação da empresa:
-   * não deve ser desenhada dentro da foto.
-   * Foi movida para a área inferior esquerda.
+   * Identificação da empresa abaixo do quadro da foto.
    */
   const companyId =
     row.identificacao_empresa ||
     `[C.EUCATUR] ${user.username}`;
 
-  drawText(ctx, companyId, {
-    x: 225,
-    y: 710,
-    maxWidth: 390,
-    size: 22,
-    color: '#fff0c6',
-    minimumSize: 16
+  drawValue(ctx, companyId, {
+    x: 158,
+    y: 509,
+    maxWidth: 270,
+    size: 15,
+    color: '#f8edc9'
   });
 
   /*
-   * O selo de status está aproximadamente
-   * entre x = 1360 e 1515,
-   * y = 350 e 505.
+   * Selo de status à direita.
    */
-  let statusColor = '#fff4c4';
+  let statusColor = '#fff6cf';
 
   if (status === 'VENCIDA') {
     statusColor = '#ffe08a';
@@ -311,16 +286,19 @@ async function generateCard(user, row) {
     statusColor = '#dbeafe';
   }
 
-  drawText(ctx, status === 'ATIVA' ? 'ATIVO' : status, {
-    x: 1440,
-    y: 452,
-    maxWidth: 230,
-    size: 31,
-    weight: 'bold',
-    color: statusColor,
-    align: 'center',
-    minimumSize: 20
-  });
+  drawValue(
+    ctx,
+    status === 'ATIVA' ? 'ATIVO' : status,
+    {
+      x: 1025,
+      y: 348,
+      maxWidth: 130,
+      size: 22,
+      weight: 'bold',
+      color: statusColor,
+      align: 'center'
+    }
+  );
 
   const outputPath = path.join(
     DATA_DIR,
