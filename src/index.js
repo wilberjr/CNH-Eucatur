@@ -7,8 +7,9 @@ const { normalizePhone, isValidPhone, normalizeSteamId, isValidSteamId } = requi
 const { registerCommands } = require('./commands/registerCommands');
 const { generateCard } = require('./services/cardService');
 const { ensurePanelMessage } = require('./services/panelService');
-const { runDailyAudit } = require('./services/auditService');
-const { upsertRegistration, getRegistration, getAllRegistrations, deleteRegistration } = require('./services/registrationService');
+const { runDailyAudit, auditRegistration } = require('./services/auditService');
+const { grantMemberRole, revokeMemberRole } = require('./utils/memberRole');
+const { upsertRegistration, getRegistration, getAllRegistrations, deleteRegistration, setRegistrationAge } = require('./services/registrationService');
 validateEnv();
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.DirectMessages], partials: [Partials.Channel] });
 function buildModal(customId, title) {
@@ -39,7 +40,7 @@ client.on(Events.InteractionCreate, async interaction => {
       const card = await generateCard(interaction.user, row);
       return interaction.reply({ content: `Status atual: ${card.status}.`, files: [new AttachmentBuilder(card.path)], ephemeral: true });
     }
-    if (['cnh-admin', 'cnh-vencidos', 'cnh-proximos', 'cnh-excluir'].includes(interaction.commandName) && !canUseStaff(interaction, env)) return interaction.reply({ content: 'Apenas a staff pode usar esse comando.', ephemeral: true });
+    if (['cnh-admin', 'cnh-vencidos', 'cnh-proximos', 'cnh-excluir', 'cnh-simular-vencimento', 'cnh-forcar-auditoria', 'cnh-cargo'].includes(interaction.commandName) && !canUseStaff(interaction, env)) return interaction.reply({ content: 'Apenas a staff pode usar esse comando.', ephemeral: true });
     if (interaction.commandName === 'cnh-admin') {
       const rows = await getAllRegistrations();
       const count = summarize(rows);
@@ -65,6 +66,61 @@ client.on(Events.InteractionCreate, async interaction => {
       if (logChannel) await logChannel.send(`🗑️ ${interaction.user} excluiu a CNH de ${target}.`).catch(() => null);
       return interaction.reply({ content: `CNH de ${target.tag} excluída com sucesso.`, ephemeral: true });
     }
+
+    /*
+     * ---- Comandos de teste (staff) ----
+     * Existem para validar vencimento + remoção/concessão de cargo sem
+     * precisar esperar os prazos reais (30/40 dias) ou o cron das 9h.
+     */
+
+    if (interaction.commandName === 'cnh-simular-vencimento') {
+      const target = interaction.options.getUser('usuario', true);
+      const dias = interaction.options.getInteger('dias') ?? 31;
+      const existing = await getRegistration(target.id);
+      if (!existing) return interaction.reply({ content: `${target.tag} não possui CNH cadastrada. Cadastre primeiro para poder simular.`, ephemeral: true });
+
+      await interaction.deferReply({ ephemeral: true });
+      await setRegistrationAge(target.id, dias);
+      const row = await getRegistration(target.id);
+
+      const adminChannel = await client.channels.fetch(env.adminChannelId).catch(() => null);
+      const logChannel = await client.channels.fetch(env.logChannelId).catch(() => null);
+      const { days, state } = await auditRegistration(client, env, row, { adminChannel, logChannel, guild: interaction.guild });
+
+      const statusLabel = { ativa: '🟢 ativa', proximo: '🟡 próxima do vencimento', vencida: '🔴 vencida', inativa: '⚫ inativa' }[state];
+      const roleNote = env.removeRoleOnExpire
+        ? 'A remoção/concessão de cargo (se aplicável) já foi processada — confira o canal de log e os cargos do usuário.'
+        : '⚠️ REMOVE_ROLE_ON_EXPIRE está desativado no ambiente, então o cargo não foi alterado — apenas o status foi simulado.';
+
+      return interaction.editReply(
+        `Simulação aplicada em ${target}.\nÚltima renovação agora aparenta ter **${days} dias** → status **${statusLabel}**.\n${roleNote}\n\nPara desfazer, rode novamente com \`dias: 0\`.`
+      );
+    }
+
+    if (interaction.commandName === 'cnh-forcar-auditoria') {
+      await interaction.deferReply({ ephemeral: true });
+      const summary = await runDailyAudit(client, env);
+      return interaction.editReply(
+        `Auditoria executada manualmente.\n🟢 Ativas: ${summary.ativa} | 🟡 Próximas: ${summary.proximo} | 🔴 Vencidas: ${summary.vencida} | ⚫ Inativas: ${summary.inativa}\n\nConfira o canal de log para ver quem teve cargo removido nesta execução.`
+      );
+    }
+
+    if (interaction.commandName === 'cnh-cargo') {
+      const target = interaction.options.getUser('usuario', true);
+      const acao = interaction.options.getString('acao', true);
+      await interaction.deferReply({ ephemeral: true });
+      const logChannel = await client.channels.fetch(env.logChannelId).catch(() => null);
+
+      if (acao === 'conceder') {
+        await grantMemberRole(interaction.guild, target.id, env, { logChannel, reason: `Concedido manualmente por ${interaction.user.tag}` });
+      } else {
+        await revokeMemberRole(interaction.guild, target.id, env, { logChannel, reason: `Removido manualmente por ${interaction.user.tag}` });
+      }
+
+      return interaction.editReply(
+        `Ação "${acao}" solicitada para ${target}. Confira o canal de log: se aparecer um aviso de ⚠️ falha, normalmente é a hierarquia de cargos do bot que precisa ser ajustada.`
+      );
+    }
   }
   if (interaction.isButton()) {
     if (interaction.customId === 'cnh_register') return interaction.showModal(buildModal('cnh_modal_register', 'Cadastro CNH Virtual'));
@@ -89,6 +145,18 @@ client.on(Events.InteractionCreate, async interaction => {
     const row = await getRegistration(interaction.user.id);
     const card = await generateCard(interaction.user, row);
     const logChannel = await client.channels.fetch(env.logChannelId).catch(() => null);
+
+    /*
+     * Concede o cargo de membro ativo sempre que o cadastro ou a
+     * renovação forem concluídos com sucesso (controlado por
+     * GRANT_ROLE_ON_REGISTER). Se o cargo tiver sido removido por
+     * vencimento, isso também devolve o acesso na renovação.
+     */
+    if (env.grantRoleOnRegister) {
+      const reason = interaction.customId === 'cnh_modal_register' ? 'CNH Virtual cadastrada' : 'CNH Virtual renovada';
+      await grantMemberRole(interaction.guild, interaction.user.id, env, { logChannel, reason });
+    }
+
     if (logChannel) await logChannel.send({ content: `${interaction.user} atualizou a CNH Virtual.`, files: [new AttachmentBuilder(card.path)] }).catch(() => null);
     const text = interaction.customId === 'cnh_modal_register' ? 'Cadastro concluído com sucesso.' : 'Renovação concluída com sucesso.';
     return interaction.reply({ content: `${text} Status atual: ${card.status}.`, files: [new AttachmentBuilder(card.path)], ephemeral: true });

@@ -1,5 +1,5 @@
 const { run, get, all } = require('./database');
-const { isoNow } = require('../utils/date');
+const { isoNow, addDays } = require('../utils/date');
 async function upsertRegistration(payload) {
   await run(`INSERT INTO registrations (
     discord_user_id, discord_tag, nome_completo, identificacao_empresa, telefone, steam_id, created_at, updated_at, last_user_alert_at, last_admin_alert_at, status
@@ -20,4 +20,19 @@ async function getAllRegistrations() { return all('SELECT * FROM registrations O
 async function deleteRegistration(userId) { return run('DELETE FROM registrations WHERE discord_user_id = ?', [userId]); }
 async function markAlert(userId, field) { return run(`UPDATE registrations SET ${field} = ? WHERE discord_user_id = ?`, [isoNow(), userId]); }
 async function updateStatus(userId, status) { return run('UPDATE registrations SET status = ? WHERE discord_user_id = ?', [status, userId]); }
-module.exports = { upsertRegistration, getRegistration, getAllRegistrations, deleteRegistration, markAlert, updateStatus };
+
+/*
+ * Uso exclusivo de testes administrativos: reescreve updated_at como se a
+ * última renovação tivesse acontecido há N dias, e limpa os alertas já
+ * disparados (para que os avisos de vencimento possam ser testados de novo).
+ * dias=0 tem o efeito de "resetar", como se tivesse acabado de renovar.
+ */
+async function setRegistrationAge(userId, days) {
+  const target = addDays(new Date(), -Math.abs(days)).toISOString();
+  return run(
+    'UPDATE registrations SET updated_at = ?, last_user_alert_at = NULL, last_admin_alert_at = NULL WHERE discord_user_id = ?',
+    [target, userId]
+  );
+}
+
+module.exports = { upsertRegistration, getRegistration, getAllRegistrations, deleteRegistration, markAlert, updateStatus, setRegistrationAge };
