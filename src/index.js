@@ -12,6 +12,20 @@ const { grantMemberRole, revokeMemberRole } = require('./utils/memberRole');
 const { upsertRegistration, getRegistration, getAllRegistrations, deleteRegistration, setRegistrationAge } = require('./services/registrationService');
 validateEnv();
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.DirectMessages], partials: [Partials.Channel] });
+
+/*
+ * Rede de segurança: qualquer erro não tratado dentro de um handler de
+ * interação (ex.: DiscordAPIError, falha de rede) não pode derrubar o
+ * processo inteiro — foi exatamente isso que reiniciou o bot na renovação
+ * que deu "Unknown interaction". client.on('error', ...) evita que o
+ * processo morra quando o discord.js emite 'error' sem listener, e
+ * unhandledRejection cobre qualquer outra Promise rejeitada que escape.
+ */
+client.on('error', error => console.error('[client error]', error));
+client.on('shardError', error => console.error('[shard error]', error));
+process.on('unhandledRejection', reason => console.error('[unhandledRejection]', reason));
+process.on('uncaughtException', error => console.error('[uncaughtException]', error));
+
 function buildModal(customId, title) {
   return new ModalBuilder().setCustomId(customId).setTitle(title).addComponents(
     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('nome_completo').setLabel('Nome Completo').setPlaceholder('Fulano de Tal da Silva').setStyle(TextInputStyle.Short).setRequired(true)),
@@ -28,17 +42,19 @@ client.once(Events.ClientReady, async ready => {
   console.log(`Bot online como ${ready.user.tag}`);
 });
 client.on(Events.InteractionCreate, async interaction => {
-  if (interaction.isChatInputCommand()) {
+  try {
+    if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'cnh-painel') {
       if (!canUseStaff(interaction, env)) return interaction.reply({ content: 'Apenas a staff pode atualizar o painel.', ephemeral: true });
       const panelId = await ensurePanelMessage(client, env);
       return interaction.reply({ content: panelId ? `Painel confirmado. Mensagem: ${panelId}` : 'Não consegui confirmar o painel.', ephemeral: true });
     }
     if (interaction.commandName === 'cnh-status') {
+      await interaction.deferReply({ ephemeral: true });
       const row = await getRegistration(interaction.user.id);
-      if (!row) return interaction.reply({ content: 'Você ainda não possui cadastro na CNH Virtual.', ephemeral: true });
+      if (!row) return interaction.editReply({ content: 'Você ainda não possui cadastro na CNH Virtual.' });
       const card = await generateCard(interaction.user, row);
-      return interaction.reply({ content: `Status atual: ${card.status}.`, files: [new AttachmentBuilder(card.path)], ephemeral: true });
+      return interaction.editReply({ content: `Status atual: ${card.status}.`, files: [new AttachmentBuilder(card.path)] });
     }
     if (['cnh-admin', 'cnh-vencidos', 'cnh-proximos', 'cnh-excluir', 'cnh-simular-vencimento', 'cnh-forcar-auditoria', 'cnh-cargo'].includes(interaction.commandName) && !canUseStaff(interaction, env)) return interaction.reply({ content: 'Apenas a staff pode usar esse comando.', ephemeral: true });
     if (interaction.commandName === 'cnh-admin') {
@@ -126,10 +142,11 @@ client.on(Events.InteractionCreate, async interaction => {
     if (interaction.customId === 'cnh_register') return interaction.showModal(buildModal('cnh_modal_register', 'Cadastro CNH Virtual'));
     if (interaction.customId === 'cnh_renew') return interaction.showModal(buildModal('cnh_modal_renew', 'Renovação CNH Virtual'));
     if (interaction.customId === 'cnh_status') {
+      await interaction.deferReply({ ephemeral: true });
       const row = await getRegistration(interaction.user.id);
-      if (!row) return interaction.reply({ content: 'Você ainda não possui cadastro na CNH Virtual.', ephemeral: true });
+      if (!row) return interaction.editReply({ content: 'Você ainda não possui cadastro na CNH Virtual.' });
       const card = await generateCard(interaction.user, row);
-      return interaction.reply({ content: `Status atual: ${card.status}.`, files: [new AttachmentBuilder(card.path)], ephemeral: true });
+      return interaction.editReply({ content: `Status atual: ${card.status}.`, files: [new AttachmentBuilder(card.path)] });
     }
   }
   if (interaction.isModalSubmit()) {
@@ -140,26 +157,50 @@ client.on(Events.InteractionCreate, async interaction => {
     const steamId = normalizeSteamId(interaction.fields.getTextInputValue('steam_id'));
     if (!isValidPhone(telefone)) return interaction.reply({ content: 'Telefone inválido. Use formato internacional, por exemplo: +55 12 91234 5678', ephemeral: true });
     if (!isValidSteamId(steamId)) return interaction.reply({ content: 'Steam ID inválido. Use o formato numérico longo, por exemplo: 7656119...', ephemeral: true });
-    const now = isoNow();
-    await upsertRegistration({ discord_user_id: interaction.user.id, discord_tag: interaction.user.tag, nome_completo: nomeCompleto, identificacao_empresa: identificacaoEmpresa, telefone, steam_id: steamId, created_at: now, updated_at: now });
-    const row = await getRegistration(interaction.user.id);
-    const card = await generateCard(interaction.user, row);
-    const logChannel = await client.channels.fetch(env.logChannelId).catch(() => null);
 
     /*
-     * Concede o cargo de membro ativo sempre que o cadastro ou a
-     * renovação forem concluídos com sucesso (controlado por
-     * GRANT_ROLE_ON_REGISTER). Se o cargo tiver sido removido por
-     * vencimento, isso também devolve o acesso na renovação.
+     * A partir daqui o processamento é pesado (gerar a imagem do card,
+     * baixar o avatar, subir um arquivo grande, mexer em cargo) e pode
+     * facilmente passar dos 3s que o Discord dá para a resposta inicial.
+     * Por isso confirmamos a interação (defer) ANTES de fazer qualquer
+     * coisa pesada, e só respondemos de verdade (editReply) no final.
      */
-    if (env.grantRoleOnRegister) {
-      const reason = interaction.customId === 'cnh_modal_register' ? 'CNH Virtual cadastrada' : 'CNH Virtual renovada';
-      await grantMemberRole(interaction.guild, interaction.user.id, env, { logChannel, reason });
-    }
+    await interaction.deferReply({ ephemeral: true });
 
-    if (logChannel) await logChannel.send({ content: `${interaction.user} atualizou a CNH Virtual.`, files: [new AttachmentBuilder(card.path)] }).catch(() => null);
-    const text = interaction.customId === 'cnh_modal_register' ? 'Cadastro concluído com sucesso.' : 'Renovação concluída com sucesso.';
-    return interaction.reply({ content: `${text} Status atual: ${card.status}.`, files: [new AttachmentBuilder(card.path)], ephemeral: true });
+    try {
+      const now = isoNow();
+      await upsertRegistration({ discord_user_id: interaction.user.id, discord_tag: interaction.user.tag, nome_completo: nomeCompleto, identificacao_empresa: identificacaoEmpresa, telefone, steam_id: steamId, created_at: now, updated_at: now });
+      const row = await getRegistration(interaction.user.id);
+      const card = await generateCard(interaction.user, row);
+      const logChannel = await client.channels.fetch(env.logChannelId).catch(() => null);
+
+      /*
+       * Concede o cargo de membro ativo sempre que o cadastro ou a
+       * renovação forem concluídos com sucesso (controlado por
+       * GRANT_ROLE_ON_REGISTER). Se o cargo tiver sido removido por
+       * vencimento, isso também devolve o acesso na renovação.
+       */
+      if (env.grantRoleOnRegister) {
+        const reason = interaction.customId === 'cnh_modal_register' ? 'CNH Virtual cadastrada' : 'CNH Virtual renovada';
+        await grantMemberRole(interaction.guild, interaction.user.id, env, { logChannel, reason });
+      }
+
+      if (logChannel) await logChannel.send({ content: `${interaction.user} atualizou a CNH Virtual.`, files: [new AttachmentBuilder(card.path)] }).catch(() => null);
+      const text = interaction.customId === 'cnh_modal_register' ? 'Cadastro concluído com sucesso.' : 'Renovação concluída com sucesso.';
+      return await interaction.editReply({ content: `${text} Status atual: ${card.status}.`, files: [new AttachmentBuilder(card.path)] });
+    } catch (error) {
+      console.error('[modalSubmit] Falha ao processar CNH:', error);
+      return interaction.editReply({ content: 'Ocorreu um erro ao processar sua CNH. Tente novamente em instantes; se persistir, avise a staff.' }).catch(() => null);
+    }
+  }
+  } catch (error) {
+    console.error('[interactionCreate] Erro não tratado:', error);
+    const genericMessage = 'Ocorreu um erro inesperado ao processar essa ação. Tente novamente; se persistir, avise a staff.';
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: genericMessage }).catch(() => null);
+    } else {
+      await interaction.reply({ content: genericMessage, ephemeral: true }).catch(() => null);
+    }
   }
 });
 client.login(env.token);
