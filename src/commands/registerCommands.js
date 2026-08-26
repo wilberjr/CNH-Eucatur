@@ -6,6 +6,7 @@ async function registerCommands(env) {
     new SlashCommandBuilder().setName('cnh-admin').setDescription('Mostra o resumo administrativo'),
     new SlashCommandBuilder().setName('cnh-vencidos').setDescription('Lista cadastros vencidos ou inativos'),
     new SlashCommandBuilder().setName('cnh-proximos').setDescription('Lista cadastros próximos do vencimento'),
+    new SlashCommandBuilder().setName('cnh-lista').setDescription('Lista todos os usuários com CNH Virtual cadastrada'),
     new SlashCommandBuilder().setName('cnh-excluir').setDescription('Exclui a CNH de um usuário').addUserOption(option => option.setName('usuario').setDescription('Usuário que terá a CNH excluída').setRequired(true)),
 
     new SlashCommandBuilder()

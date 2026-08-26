@@ -59,7 +59,7 @@ client.on(Events.InteractionCreate, async interaction => {
       const card = await generateCard(interaction.user, row);
       return interaction.editReply({ content: `Status atual: ${card.status}.`, files: [new AttachmentBuilder(card.path)] });
     }
-    if (['cnh-admin', 'cnh-vencidos', 'cnh-proximos', 'cnh-excluir', 'cnh-simular-vencimento', 'cnh-forcar-auditoria', 'cnh-cargo'].includes(interaction.commandName) && !canUseStaff(interaction, env)) return interaction.reply({ content: 'Apenas a staff pode usar esse comando.', ephemeral: true });
+    if (['cnh-admin', 'cnh-vencidos', 'cnh-proximos', 'cnh-lista', 'cnh-excluir', 'cnh-simular-vencimento', 'cnh-forcar-auditoria', 'cnh-cargo'].includes(interaction.commandName) && !canUseStaff(interaction, env)) return interaction.reply({ content: 'Apenas a staff pode usar esse comando.', ephemeral: true });
     if (interaction.commandName === 'cnh-admin') {
       const rows = await getAllRegistrations();
       const count = summarize(rows);
@@ -75,6 +75,39 @@ client.on(Events.InteractionCreate, async interaction => {
       const rows = await getAllRegistrations();
       const text = rows.filter(row => classify(daysSince(row.updated_at)) === 'proximo').slice(0, 30).map(row => `• ${row.nome_completo} — ${daysSince(row.updated_at)} dias`).join('\n');
       return interaction.reply({ content: text || 'Nenhum cadastro próximo do vencimento.', ephemeral: true });
+    }
+    if (interaction.commandName === 'cnh-lista') {
+      await interaction.deferReply({ ephemeral: true });
+      const rows = await getAllRegistrations();
+      if (!rows.length) return interaction.editReply('Nenhuma CNH Virtual cadastrada ainda.');
+
+      const STATUS_EMOJI = { ativa: '🟢', proximo: '🟡', vencida: '🔴', inativa: '⚫' };
+      const sorted = [...rows].sort((a, b) => a.nome_completo.localeCompare(b.nome_completo, 'pt-BR'));
+      const lines = sorted.map(row => {
+        const state = classify(daysSince(row.updated_at));
+        return `${STATUS_EMOJI[state]} **${row.nome_completo}** — \`${row.identificacao_empresa}\``;
+      });
+
+      // Discord limita ~4096 caracteres por descrição de embed e 10 embeds
+      // por mensagem — divide em blocos de 15 linhas para nunca estourar.
+      const CHUNK_SIZE = 15;
+      const MAX_EMBEDS = 10;
+      const chunks = [];
+      for (let i = 0; i < lines.length; i += CHUNK_SIZE) chunks.push(lines.slice(i, i + CHUNK_SIZE));
+
+      const embeds = chunks.slice(0, MAX_EMBEDS).map((chunk, index) =>
+        new EmbedBuilder()
+          .setColor(0xffbd59)
+          .setTitle(index === 0 ? `🪪 CNH Virtual cadastradas (${rows.length})` : null)
+          .setDescription(chunk.join('\n'))
+      );
+
+      const omitted = lines.length - Math.min(lines.length, CHUNK_SIZE * MAX_EMBEDS);
+      const legend = '🟢 Ativa　🟡 Próxima do vencimento　🔴 Vencida　⚫ Inativa';
+      const footerText = omitted > 0 ? `${legend} • ${omitted} cadastro(s) não exibido(s) por limite de espaço` : legend;
+      embeds[embeds.length - 1].setFooter({ text: footerText });
+
+      return interaction.editReply({ embeds });
     }
     if (interaction.commandName === 'cnh-excluir') {
       const target = interaction.options.getUser('usuario', true);
