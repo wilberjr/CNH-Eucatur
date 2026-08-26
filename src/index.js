@@ -40,6 +40,9 @@ client.once(Events.ClientReady, async ready => {
   await ensurePanelMessage(client, env);
   cron.schedule('0 9 * * *', () => runDailyAudit(client, env).catch(console.error), { timezone: env.timezone });
   console.log(`Bot online como ${ready.user.tag}`);
+  console.log(
+    `[config] MEMBER_ROLE_ID=${env.memberRoleId || '(vazio)'} | GRANT_ROLE_ON_REGISTER=${env.grantRoleOnRegister} | REMOVE_ROLE_ON_EXPIRE=${env.removeRoleOnExpire}`
+  );
 });
 client.on(Events.InteractionCreate, async interaction => {
   try {
@@ -101,7 +104,8 @@ client.on(Events.InteractionCreate, async interaction => {
 
       const adminChannel = await client.channels.fetch(env.adminChannelId).catch(() => null);
       const logChannel = await client.channels.fetch(env.logChannelId).catch(() => null);
-      const { days, state } = await auditRegistration(client, env, row, { adminChannel, logChannel, guild: interaction.guild });
+      const guild = interaction.guild ?? await client.guilds.fetch(env.guildId).catch(() => null);
+      const { days, state } = await auditRegistration(client, env, row, { adminChannel, logChannel, guild });
 
       const statusLabel = { ativa: '🟢 ativa', proximo: '🟡 próxima do vencimento', vencida: '🔴 vencida', inativa: '⚫ inativa' }[state];
       const roleNote = env.removeRoleOnExpire
@@ -126,11 +130,12 @@ client.on(Events.InteractionCreate, async interaction => {
       const acao = interaction.options.getString('acao', true);
       await interaction.deferReply({ ephemeral: true });
       const logChannel = await client.channels.fetch(env.logChannelId).catch(() => null);
+      const guild = interaction.guild ?? await client.guilds.fetch(env.guildId).catch(() => null);
 
       if (acao === 'conceder') {
-        await grantMemberRole(interaction.guild, target.id, env, { logChannel, reason: `Concedido manualmente por ${interaction.user.tag}` });
+        await grantMemberRole(guild, target.id, env, { logChannel, reason: `Concedido manualmente por ${interaction.user.tag}` });
       } else {
-        await revokeMemberRole(interaction.guild, target.id, env, { logChannel, reason: `Removido manualmente por ${interaction.user.tag}` });
+        await revokeMemberRole(guild, target.id, env, { logChannel, reason: `Removido manualmente por ${interaction.user.tag}` });
       }
 
       return interaction.editReply(
@@ -179,10 +184,16 @@ client.on(Events.InteractionCreate, async interaction => {
        * renovação forem concluídos com sucesso (controlado por
        * GRANT_ROLE_ON_REGISTER). Se o cargo tiver sido removido por
        * vencimento, isso também devolve o acesso na renovação.
+       *
+       * interaction.guild depende do cache interno do discord.js; em vez
+       * de confiar cegamente nele, buscamos via API se estiver vazio —
+       * isso evita a concessão falhar em silêncio logo após o bot
+       * reiniciar ou em qualquer instabilidade momentânea de cache.
        */
       if (env.grantRoleOnRegister) {
+        const guild = interaction.guild ?? await client.guilds.fetch(env.guildId).catch(() => null);
         const reason = interaction.customId === 'cnh_modal_register' ? 'CNH Virtual cadastrada' : 'CNH Virtual renovada';
-        await grantMemberRole(interaction.guild, interaction.user.id, env, { logChannel, reason });
+        await grantMemberRole(guild, interaction.user.id, env, { logChannel, reason });
       }
 
       if (logChannel) await logChannel.send({ content: `${interaction.user} atualizou a CNH Virtual.`, files: [new AttachmentBuilder(card.path)] }).catch(() => null);
