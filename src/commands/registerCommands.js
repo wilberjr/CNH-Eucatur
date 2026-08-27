@@ -7,6 +7,20 @@ async function registerCommands(env) {
     new SlashCommandBuilder().setName('cnh-vencidos').setDescription('Lista cadastros vencidos ou inativos'),
     new SlashCommandBuilder().setName('cnh-proximos').setDescription('Lista cadastros próximos do vencimento'),
     new SlashCommandBuilder().setName('cnh-lista').setDescription('Lista todos os usuários com CNH Virtual cadastrada'),
+    new SlashCommandBuilder()
+      .setName('cnh-exportar')
+      .setDescription('Gera um arquivo .csv com os cadastros (abre no Excel/Google Sheets)')
+      .addStringOption(option =>
+        option.setName('filtro')
+          .setDescription('Quais cadastros incluir (padrão: todos)')
+          .setRequired(false)
+          .addChoices(
+            { name: 'Todos', value: 'todos' },
+            { name: 'Vencidos e inativos', value: 'vencidos' },
+            { name: 'Próximos do vencimento', value: 'proximos' },
+            { name: 'Ativos', value: 'ativos' }
+          )
+      ),
     new SlashCommandBuilder().setName('cnh-excluir').setDescription('Exclui a CNH de um usuário').addUserOption(option => option.setName('usuario').setDescription('Usuário que terá a CNH excluída').setRequired(true)),
 
     new SlashCommandBuilder()
