@@ -11,6 +11,7 @@ const { runDailyAudit, auditRegistration } = require('./services/auditService');
 const { grantMemberRole, revokeMemberRole } = require('./utils/memberRole');
 const { buildRegistrationsCsv } = require('./utils/csvExport');
 const { upsertRegistration, getRegistration, getAllRegistrations, deleteRegistration, setRegistrationAge } = require('./services/registrationService');
+const { ready: databaseReady } = require('./services/database');
 validateEnv();
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.DirectMessages], partials: [Partials.Channel] });
 
@@ -301,4 +302,14 @@ client.on(Events.InteractionCreate, async interaction => {
     }
   }
 });
-client.login(env.token);
+/*
+ * Só loga no Discord depois que o schema/migrações do banco estiverem
+ * 100% aplicados — evita a corrida em que uma interação chegava antes
+ * do ALTER TABLE terminar (causava "no column named ..." em produção).
+ */
+databaseReady
+  .then(() => client.login(env.token))
+  .catch(error => {
+    console.error('[db] Falha ao inicializar banco de dados, abortando:', error);
+    process.exit(1);
+  });
