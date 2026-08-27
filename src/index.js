@@ -9,6 +9,7 @@ const { generateCard } = require('./services/cardService');
 const { ensurePanelMessage } = require('./services/panelService');
 const { runDailyAudit, auditRegistration } = require('./services/auditService');
 const { grantMemberRole, revokeMemberRole } = require('./utils/memberRole');
+const { buildRegistrationsCsv } = require('./utils/csvExport');
 const { upsertRegistration, getRegistration, getAllRegistrations, deleteRegistration, setRegistrationAge } = require('./services/registrationService');
 validateEnv();
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.DirectMessages], partials: [Partials.Channel] });
@@ -35,10 +36,39 @@ function buildModal(customId, title) {
   );
 }
 function summarize(rows) { const count = { ativa: 0, proximo: 0, vencida: 0, inativa: 0 }; for (const row of rows) count[classify(daysSince(row.updated_at))]++; return count; }
+
+/*
+ * Resumo semanal automático no canal admin — mesma informação do
+ * /cnh-admin, mas sem precisar ninguém lembrar de rodar o comando.
+ */
+async function postWeeklyReport() {
+  const adminChannel = await client.channels.fetch(env.adminChannelId).catch(() => null);
+  if (!adminChannel) return;
+  const rows = await getAllRegistrations();
+  const count = summarize(rows);
+  const embed = new EmbedBuilder()
+    .setColor(0x1d4ed8)
+    .setTitle('📅 Resumo semanal • CNH Virtual')
+    .addFields(
+      { name: '🟢 Ativas', value: String(count.ativa), inline: true },
+      { name: '🟡 Próximas', value: String(count.proximo), inline: true },
+      { name: '🔴 Vencidas', value: String(count.vencida), inline: true },
+      { name: '⚫ Inativas', value: String(count.inativa), inline: true }
+    )
+    .setFooter({ text: `Total cadastrado: ${rows.length}` })
+    .setTimestamp();
+  await adminChannel.send({ embeds: [embed] }).catch(() => null);
+}
+
 client.once(Events.ClientReady, async ready => {
   await registerCommands(env);
   await ensurePanelMessage(client, env);
   cron.schedule('0 9 * * *', () => runDailyAudit(client, env).catch(console.error), { timezone: env.timezone });
+  /*
+   * Toda segunda-feira às 9h05 (5 min depois da auditoria diária, para
+   * o resumo já refletir qualquer mudança de status daquele dia).
+   */
+  cron.schedule('5 9 * * 1', () => postWeeklyReport().catch(console.error), { timezone: env.timezone });
   console.log(`Bot online como ${ready.user.tag}`);
   console.log(
     `[config] MEMBER_ROLE_ID=${env.memberRoleId || '(vazio)'} | GRANT_ROLE_ON_REGISTER=${env.grantRoleOnRegister} | REMOVE_ROLE_ON_EXPIRE=${env.removeRoleOnExpire}`
@@ -59,7 +89,7 @@ client.on(Events.InteractionCreate, async interaction => {
       const card = await generateCard(interaction.user, row);
       return interaction.editReply({ content: `Status atual: ${card.status}.`, files: [new AttachmentBuilder(card.path)] });
     }
-    if (['cnh-admin', 'cnh-vencidos', 'cnh-proximos', 'cnh-lista', 'cnh-excluir', 'cnh-simular-vencimento', 'cnh-forcar-auditoria', 'cnh-cargo'].includes(interaction.commandName) && !canUseStaff(interaction, env)) return interaction.reply({ content: 'Apenas a staff pode usar esse comando.', ephemeral: true });
+    if (['cnh-admin', 'cnh-vencidos', 'cnh-proximos', 'cnh-lista', 'cnh-exportar', 'cnh-excluir', 'cnh-simular-vencimento', 'cnh-forcar-auditoria', 'cnh-cargo'].includes(interaction.commandName) && !canUseStaff(interaction, env)) return interaction.reply({ content: 'Apenas a staff pode usar esse comando.', ephemeral: true });
     if (interaction.commandName === 'cnh-admin') {
       const rows = await getAllRegistrations();
       const count = summarize(rows);
@@ -108,6 +138,30 @@ client.on(Events.InteractionCreate, async interaction => {
       embeds[embeds.length - 1].setFooter({ text: footerText });
 
       return interaction.editReply({ embeds });
+    }
+
+    if (interaction.commandName === 'cnh-exportar') {
+      await interaction.deferReply({ ephemeral: true });
+      const filtro = interaction.options.getString('filtro') || 'todos';
+      const rows = await getAllRegistrations();
+
+      const filtered = rows.filter(row => {
+        const state = classify(daysSince(row.updated_at));
+        if (filtro === 'vencidos') return state === 'vencida' || state === 'inativa';
+        if (filtro === 'proximos') return state === 'proximo';
+        if (filtro === 'ativos') return state === 'ativa';
+        return true;
+      });
+
+      if (!filtered.length) return interaction.editReply(`Nenhum cadastro encontrado para o filtro "${filtro}".`);
+
+      const csvContent = buildRegistrationsCsv(filtered);
+      const FILTRO_LABEL = { todos: 'todos os cadastros', vencidos: 'vencidos/inativos', proximos: 'próximos do vencimento', ativos: 'ativos' };
+
+      return interaction.editReply({
+        content: `Exportação gerada: ${filtered.length} registro(s) (${FILTRO_LABEL[filtro]}).`,
+        files: [new AttachmentBuilder(Buffer.from(csvContent, 'utf8'), { name: `cnh-${filtro}.csv` })]
+      });
     }
     if (interaction.commandName === 'cnh-excluir') {
       const target = interaction.options.getUser('usuario', true);

@@ -2,8 +2,8 @@ const { run, get, all } = require('./database');
 const { isoNow, addDays } = require('../utils/date');
 async function upsertRegistration(payload) {
   await run(`INSERT INTO registrations (
-    discord_user_id, discord_tag, nome_completo, identificacao_empresa, telefone, steam_id, created_at, updated_at, last_user_alert_at, last_admin_alert_at, status
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 'ativa')
+    discord_user_id, discord_tag, nome_completo, identificacao_empresa, telefone, steam_id, created_at, updated_at, last_user_alert_at, last_admin_alert_at, last_reminder_alert_at, status
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 'ativa')
   ON CONFLICT(discord_user_id) DO UPDATE SET
     discord_tag=excluded.discord_tag,
     nome_completo=excluded.nome_completo,
@@ -13,6 +13,7 @@ async function upsertRegistration(payload) {
     updated_at=excluded.updated_at,
     last_user_alert_at=NULL,
     last_admin_alert_at=NULL,
+    last_reminder_alert_at=NULL,
     status='ativa'`, [payload.discord_user_id,payload.discord_tag,payload.nome_completo,payload.identificacao_empresa,payload.telefone,payload.steam_id,payload.created_at,payload.updated_at]);
 }
 async function getRegistration(userId) { return get('SELECT * FROM registrations WHERE discord_user_id = ?', [userId]); }
@@ -30,7 +31,7 @@ async function updateStatus(userId, status) { return run('UPDATE registrations S
 async function setRegistrationAge(userId, days) {
   const target = addDays(new Date(), -Math.abs(days)).toISOString();
   return run(
-    'UPDATE registrations SET updated_at = ?, last_user_alert_at = NULL, last_admin_alert_at = NULL WHERE discord_user_id = ?',
+    'UPDATE registrations SET updated_at = ?, last_user_alert_at = NULL, last_admin_alert_at = NULL, last_reminder_alert_at = NULL WHERE discord_user_id = ?',
     [target, userId]
   );
 }
